@@ -17,11 +17,17 @@ async function main() {
 
   const refCode = await prompt(chalk.yellow("Enter Referral Code: "));
   const count = parseInt(await prompt(chalk.yellow("How many do you want? ")));
+  const countProviders = parseInt(
+    await prompt(chalk.yellow("How many providers do you want generate? "))
+  );
   const proxiesLoaded = loadProxies();
   if (!proxiesLoaded) {
     logMessage(null, null, "No Proxy. Using default IP", "warning");
   }
   const accountDistribute = fs.createWriteStream("accounts.txt", {
+    flags: "a",
+  });
+  const provider = fs.createWriteStream("provider.txt", {
     flags: "a",
   });
   let successful = 0;
@@ -33,6 +39,7 @@ async function main() {
       const currentProxy = await getRandomProxy(successful + 1, count);
       const distri = new distributeAI(
         refCode,
+        countProviders,
         currentProxy,
         successful + 1,
         count
@@ -45,6 +52,12 @@ async function main() {
           accountDistribute.write(
             `Password: ${account.registration.password}\n`
           );
+          accountDistribute.write(`Token: ${account.token}\n`);
+          if (account.providers && account.providers.length > 0) {
+            account.providers.forEach((p) => {
+              provider.write(`${p.token}\n`);
+            });
+          }
           accountDistribute.write("-".repeat(85) + "\n");
           successful++;
           logMessage(
@@ -76,6 +89,7 @@ async function main() {
     }
   } finally {
     accountDistribute.end();
+    provider.end();
     console.log(chalk.magenta("\n[*] Dono bang!"));
     console.log(
       chalk.green(`[*] Account dono ${successful} dari ${count} akun`)

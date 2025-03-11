@@ -7,8 +7,9 @@ const UserAgent = require("user-agents");
 const cheerio = require("cheerio");
 
 module.exports = class distributeAI {
-  constructor(refCode, proxy = null, currentNum, total) {
+  constructor(refCode, provider, proxy = null, currentNum, total) {
     this.refCode = refCode;
+    this.provider = provider;
     this.proxy = proxy;
     this.currentNum = currentNum;
     this.total = total;
@@ -122,8 +123,8 @@ module.exports = class distributeAI {
       "process"
     );
 
-    const firstname = faker.person.firstName();
-    const lastname = faker.person.lastName();
+    const firstname = faker.person.firstName().toLowerCase();
+    const lastname = faker.person.lastName().toLowerCase();
     const randomNums = Math.floor(Math.random() * 900 + 100).toString();
 
     const separator = Math.random() > 0.5 ? "" : ".";
@@ -346,6 +347,99 @@ module.exports = class distributeAI {
     }
   }
 
+  async loginUser(email, password) {
+    logMessage(
+      this.currentNum,
+      this.total,
+      "Trying to login account...",
+      "process"
+    );
+    const headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Referer: "https://dashboard.distribute.ai",
+      Origin: "https://dashboard.distribute.ai",
+    };
+
+    const payload = {
+      email: email,
+      password: password,
+      rememberSession: false,
+    };
+
+    try {
+      const response = await this.makeRequest(
+        "POST",
+        "https://api.distribute.ai/internal/auth/login",
+        { headers: headers, data: payload }
+      );
+
+      if (response && response.data.token) {
+        logMessage(this.currentNum, this.total, "Login successful!", "success");
+        return response.data.token;
+      }
+      return null;
+    } catch (error) {
+      logMessage(
+        this.currentNum,
+        this.total,
+        `Error login account, message : ${error.message}`,
+        "error"
+      );
+      return null;
+    }
+  }
+
+  async generateProvider(token) {
+    logMessage(
+      this.currentNum,
+      this.total,
+      "Trying to generate provider...",
+      "process"
+    );
+
+    const headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `${token}`,
+    };
+
+    const providers = [];
+    for (let i = 0; i < this.provider; i++) {
+      const payload = {
+        name: faker.person.firstName(),
+        platform: "browser",
+      };
+
+      try {
+        const response = await this.makeRequest(
+          "POST",
+          "https://api.distribute.ai/internal/auth/connect",
+          { headers: headers, data: payload }
+        );
+
+        if (response.data) {
+          logMessage(
+            this.currentNum,
+            this.total,
+            `Provider ${i + 1} generated!`,
+            "success"
+          );
+          providers.push(response.data);
+        }
+      } catch (error) {
+        logMessage(
+          this.currentNum,
+          this.total,
+          `Error generate provider ${i + 1}, message : ${error.message}`,
+          "error"
+        );
+      }
+    }
+
+    return providers;
+  }
+
   async singleProses() {
     logMessage(
       this.currentNum,
@@ -363,12 +457,27 @@ module.exports = class distributeAI {
         if (verifyCode) {
           const verifyResponse = await this.verifyAccount(verifyCode);
           if (verifyResponse) {
-            return {
-              registration: {
-                email: email,
-                password: password,
-              },
-            };
+            const token = await this.loginUser(email, password);
+            if (token) {
+              const providers = await this.generateProvider(token);
+              if (providers && providers.length > 0) {
+                return {
+                  registration: {
+                    email: email,
+                    password: password,
+                  },
+                  token: token,
+                  providers: providers,
+                };
+              }
+            } else {
+              return {
+                registration: {
+                  email: email,
+                  password: password,
+                },
+              };
+            }
           }
         }
       }
